@@ -51,8 +51,16 @@ class DashboardController extends Controller
             ->map(fn ($row) => ['name' => $row->name, 'count' => $row->total]);
 
         // Temps moyen de résolution en heures (incidents résolus ou clôturés).
+        // Syntaxe différente selon le SGBD (MySQL vs PostgreSQL vs SQLite).
+        $driver = DB::connection()->getDriverName();
+        $avgHoursExpr = match ($driver) {
+            'pgsql' => 'avg(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600) as avg_hours',
+            'sqlite' => 'avg((julianday(resolved_at) - julianday(created_at)) * 24) as avg_hours',
+            default => 'avg(timestampdiff(HOUR, created_at, resolved_at)) as avg_hours',
+        };
+
         $avgHours = Incident::whereNotNull('resolved_at')
-            ->select(DB::raw('avg(timestampdiff(HOUR, created_at, resolved_at)) as avg_hours'))
+            ->select(DB::raw($avgHoursExpr))
             ->value('avg_hours');
 
         $currentMonth = Incident::whereMonth('created_at', now()->month)
